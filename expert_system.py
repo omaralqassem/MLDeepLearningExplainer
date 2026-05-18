@@ -98,9 +98,7 @@ def classify_features(shap_dict, high_ratio=0.20, med_ratio=0.05):
 
 
 def generate_arabic_report(shap_dict, predicted_class, class_names=None):
-
     classified = classify_features(shap_dict)
-
     engine = GenericExpertSystem()
     engine.reset()
     for item in sorted(classified, key=lambda x: -x["ratio"]):
@@ -111,14 +109,11 @@ def generate_arabic_report(shap_dict, predicted_class, class_names=None):
             direction=item["direction"]
         ))
     engine.run()
-
     label = (class_names[predicted_class]
              if class_names is not None else str(predicted_class))
-
     high_feats = [c for c in classified if c["importance_level"] == "High"]
     pos_high = [c for c in high_feats if c["direction"] == "Positive"]
     neg_high = [c for c in high_feats if c["direction"] == "Negative"]
-
     summary = (
         f" الملخص التنفيذي:\n"
         f"قام النموذج بالتنبؤ بالفئة: «{label}».\n"
