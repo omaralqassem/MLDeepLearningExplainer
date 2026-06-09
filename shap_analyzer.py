@@ -2,6 +2,8 @@ import shap
 import numpy as np
 import pandas as pd
 
+
+
 def analyze_with_shap(model, X_train, sample):
     if isinstance(sample, pd.Series):
         sample = sample.to_frame().T
@@ -38,5 +40,6 @@ def analyze_with_shap(model, X_train, sample):
         vals = vals[0]
     
     shap_dict = {name: float(val) for name, val in zip(feature_names, vals)}
+    sample_dict = {name: float(sample[name].iloc[0]) for name in feature_names}
 
-    return shap_dict, predicted_class
+    return shap_dict, sample_dict, predicted_class

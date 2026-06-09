@@ -1,7 +1,3 @@
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -18,12 +14,13 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Input
 
 from shap_analyzer import analyze_with_shap
-from expert_system import generate_arabic_report
+from expert_system import generate_arabic_medical_report
 
 def main():
     data = load_wine(as_frame=True)
     X, y = data.data, data.target
     class_names = list(data.target_names)
+    
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
@@ -33,22 +30,47 @@ def main():
     X_test_scaled = pd.DataFrame(scaler.transform(X_test), columns=X.columns)
     sample_idx = 0
 
-    print("=========================")
-    print("Tree-Based Model (RandomForest)")
+    patient_context = {
+        "age": 67,
+        "gender": "male",
+        "comorbidities": ["diabetes"]
+    }
+
+    print("==================================================")
+    print("1. Tree-Based Model (RandomForestClassifier)")
+    print("==================================================")
     model_tree = RandomForestClassifier(n_estimators=100, random_state=42)
     model_tree.fit(X_train, y_train)
-    shap_dict, pred = analyze_with_shap(model_tree, X_train, X_test.iloc[[sample_idx]])
-    print(generate_arabic_report(shap_dict, pred, class_names=class_names))
+    
+    shap_dict, sample_dict, pred = analyze_with_shap(
+        model_tree, X_train, X_test.iloc[[sample_idx]]
+    )
+    report_tree = generate_arabic_medical_report(
+        shap_dict, sample_dict, pred, 
+        patient_context=patient_context, 
+        class_names=class_names
+    )
+    print(report_tree)
 
-    print("\n" + "====================================")
-    print(" Generic Model (Logistic Regression)")
+    print("\n" + "==================================================")
+    print("2. Linear Model (Logistic Regression)")
+    print("==================================================")
     model_gen = LogisticRegression(max_iter=1000)
     model_gen.fit(X_train_scaled, y_train)
-    shap_dict, pred = analyze_with_shap(model_gen, X_train_scaled, X_test_scaled.iloc[[sample_idx]])
-    print(generate_arabic_report(shap_dict, pred, class_names=class_names))
+    
+    shap_dict, sample_dict, pred = analyze_with_shap(
+        model_gen, X_train_scaled, X_test_scaled.iloc[[sample_idx]]
+    )
+    report_linear = generate_arabic_medical_report(
+        shap_dict, sample_dict, pred, 
+        patient_context=patient_context, 
+        class_names=class_names
+    )
+    print(report_linear)
 
-    print("\n" + "==============================")
-    print(" Deep Learning Model (Keras)")
+    print("\n" + "==================================================")
+    print("3. Deep Learning Model (Keras)")
+    print("==================================================")
     model_dl = Sequential([
         Input(shape=(X_train.shape[1],)),
         Dense(16, activation='relu'),
@@ -66,9 +88,16 @@ def main():
     model_dl.predict = dl_predict_wrapper
     model_dl.predict_proba = raw_keras_predict
     
-    shap_dict, pred = analyze_with_shap(model_dl, X_train_scaled, X_test_scaled.iloc[[sample_idx]])
-    print(generate_arabic_report(shap_dict, pred, class_names=class_names))
-    print("=========================")
+    shap_dict, sample_dict, pred = analyze_with_shap(
+        model_dl, X_train_scaled, X_test_scaled.iloc[[sample_idx]]
+    )
+    report_dl = generate_arabic_medical_report(
+        shap_dict, sample_dict, pred, 
+        patient_context=patient_context, 
+        class_names=class_names
+    )
+    print(report_dl)
+    print("==================================================")
 
 if __name__ == "__main__":
     main()
