@@ -66,6 +66,37 @@ MEDICAL_METADATA = {
     },
 }
 
+def parse_clinical_status(value, range_str):
+    if not range_str:
+        return "Normal"
+    range_str = range_str.strip()
+    try:
+        if range_str.startswith("<="):
+            limit = float(range_str[2:])
+            return "Normal" if value <= limit else "High"
+        elif range_str.startswith("<"):
+            limit = float(range_str[1:])
+            return "Normal" if value < limit else "High"
+        elif range_str.startswith(">="):
+            limit = float(range_str[2:])
+            return "Normal" if value >= limit else "Low"
+        elif range_str.startswith(">"):
+            limit = float(range_str[1:])
+            return "Normal" if value > limit else "Low"
+        elif "-" in range_str:
+            parts = range_str.split("-")
+            low = float(parts[0])
+            high = float(parts[1])
+            if value < low:
+                return "Low"
+            elif value > high:
+                return "High"
+            else:
+                return "Normal"
+    except ValueError:
+        pass
+    return "Normal"
+
 
 class PatientContext(Fact):
     age = Field(int, mandatory=True)
@@ -79,6 +110,7 @@ class FeaturesFact(Fact):
     value = Field(float, mandatory=True)
     unit = Field(str, default="")
     normal_range = Field(str, default="")
+    clinical_status = Field(str, default="Normal")
     group = Field(str, default="General")
     shap_value = Field(float, mandatory=True)
     importance_level = Field(str, mandatory=True)
@@ -91,22 +123,36 @@ class MedicalExpertSystem(KnowledgeEngine):
         self.explanations = []
         self.clinical_insights = []
 
-    # قاعدة: عوامل الخطورة عالية التأثير
     @Rule(FeaturesFact(feature_name=MATCH.f,
                        value=MATCH.val,
                        unit=MATCH.u,
                        normal_range=MATCH.nr,
                        shap_value=MATCH.v,
                        importance_level="High",
-                       direction="Positive"))
-    def rule_high_risk_factor(self, f, val, u, nr, v):
+                       direction="Positive",
+                       clinical_status="High"))
+    def rule_high_risk_factor_confirmed(self, f, val, u, nr, v):
         ref = f" [المعدل الطبيعي المرجعي المخصص: {nr} {u}]" if nr else ""
         self.explanations.append(
-            f"• يمثل مؤشر '{f}' بقيمته المسجلة ({val} {u}){ref} عامل خطورة مرتفع الأثر، "
-            f"مما يرجح هذا التنبؤ الطبي سريرياً بنسبة تأثير واضحة."
+            f"• يمثل مؤشر '{f}' بقيمته المسجلة المرتفعة ({val} {u}){ref} عامل خطورة مرتفع الأثر، "
+            f"مما يدعم هذا التنبؤ الطبي سريرياً باتساق كامل مع المعايير الطبية المرجعية."
         )
 
-    # قاعدة: المؤشرات المطمئنة عالية التأثير 
+    @Rule(FeaturesFact(feature_name=MATCH.f,
+                       value=MATCH.val,
+                       unit=MATCH.u,
+                       normal_range=MATCH.nr,
+                       shap_value=MATCH.v,
+                       importance_level="High",
+                       direction="Positive",
+                       clinical_status="Normal"))
+    def rule_high_risk_factor_unconfirmed(self, f, val, u, nr, v):
+        ref = f" [المعدل الطبيعي المرجعي المخصص: {nr} {u}]" if nr else ""
+        self.explanations.append(
+            f"• يمثل مؤشر '{f}' بقيمته المسجلة ({val} {u}){ref} مساهماً بارزاً في توجيه نموذج الذكاء الاصطناعي، "
+            f"على الرغم من كونه يقع ضمن الحدود الطبيعية سريرياً."
+        )
+
     @Rule(FeaturesFact(feature_name=MATCH.f,
                        value=MATCH.val,
                        unit=MATCH.u,
@@ -134,7 +180,6 @@ class MedicalExpertSystem(KnowledgeEngine):
             f"• يظهر مؤشر '{f}' بقيمته المسجلة ({val} {u}){ref} كعامل خطورة متوسط ومساهم في القرار الحالي."
         )
 
-    # قاعدة: المؤشرات المطمئنة متوسطة التأثير
     @Rule(FeaturesFact(feature_name=MATCH.f,
                        value=MATCH.val,
                        unit=MATCH.u,
@@ -148,7 +193,6 @@ class MedicalExpertSystem(KnowledgeEngine):
             f"• يمثل مؤشر '{f}' بقيمته المسجلة ({val} {u}){ref} مؤشراً مطمئناً متوسط المساهمة."
         )
 
-    # قاعدة: المؤشرات منخفضة التأثير
     @Rule(FeaturesFact(feature_name=MATCH.f,
                        value=MATCH.val,
                        unit=MATCH.u,
@@ -159,7 +203,6 @@ class MedicalExpertSystem(KnowledgeEngine):
             f"• مؤشر '{f}' بقيمته الحالية ({val} {u}) ذو تأثير محدود وغير حاسم في مسار القرار السريري الحالي."
         )
 
-    # قاعدة تفاعل سريري وعائي: ارتفاع ضغط الدم والدهون معاً
     @Rule(
         FeaturesFact(group="Vitals", raw_name=MATCH.rn1, direction="Positive", importance_level="High"),
         FeaturesFact(group="Labs", raw_name=MATCH.rn2, direction="Positive", importance_level="High")
@@ -175,7 +218,6 @@ class MedicalExpertSystem(KnowledgeEngine):
                 "مما يزيد بشكل مضاعف من مخاطر الحوادث القلبية والوعائية مقارنة بوجود عامل منفرد."
             )
 
-    # قاعدة تفاعل سريري كلوي: ارتفاع الكرياتينين واليوريا معاً
     @Rule(
         FeaturesFact(group="Labs", raw_name=MATCH.rn1, direction="Positive", importance_level="High"),
         FeaturesFact(group="Labs", raw_name=MATCH.rn2, direction="Positive", importance_level="High")
@@ -190,7 +232,6 @@ class MedicalExpertSystem(KnowledgeEngine):
                     "على احتمالية وجود تراجع ملحوظ في معدل الترشيح الكبيبي والوظيفة الكلوية للحالة."
                 )
 
-    # قاعدة دمج سياق المريض: مريض السكري المصاب بارتفاع ضغط الدم
     @Rule(
         PatientContext(comorbidities=MATCH.comor),
         FeaturesFact(raw_name="systolic_bp", value=MATCH.val, direction="Positive", importance_level="High")
@@ -203,7 +244,6 @@ class MedicalExpertSystem(KnowledgeEngine):
                 f"ويتطلب خطة علاجية مستهدفة لضبط الضغط في مستويات أدنى."
             )
 
-    # قاعدة دمج سياق المريض: المريض المتقدم في السن
     @Rule(
         PatientContext(age=MATCH.age),
         FeaturesFact(raw_name="ldl_cholesterol", value=MATCH.val, direction="Positive", importance_level="High")
@@ -237,10 +277,11 @@ def classify_features_clinical(shap_dict, sample_dict, patient_context, high_rat
         direction = "Positive" if val >= 0 else "Negative"
         
         meta = MEDICAL_METADATA.get(name.lower(), {})
-        arabic_name = meta.get("arabic_name", name)
+        arabic_name = meta.get("arabic_name", name.replace("_", " ").title())
         unit = meta.get("unit", "")
         group = meta.get("group", "General")
         ranges = meta.get("ranges", {})
+        
         if "diabetes" in comorbidities and "diabetic" in ranges:
             normal_range = ranges["diabetic"]
         elif age > 65 and "elderly" in ranges:
@@ -251,6 +292,7 @@ def classify_features_clinical(shap_dict, sample_dict, patient_context, high_rat
             normal_range = ranges.get("default", "")
         
         raw_val = float(sample_dict.get(name, 0.0))
+        clinical_status = parse_clinical_status(raw_val, normal_range)
         
         classified.append({
             "feature_name": arabic_name,
@@ -258,6 +300,7 @@ def classify_features_clinical(shap_dict, sample_dict, patient_context, high_rat
             "value": raw_val,
             "unit": unit,
             "normal_range": normal_range,
+            "clinical_status": clinical_status,
             "group": group,
             "shap_value": float(val),
             "importance_level": level,
@@ -285,6 +328,7 @@ def generate_arabic_medical_report(shap_dict, sample_dict, predicted_class, pati
             value=item["value"],
             unit=item["unit"],
             normal_range=item["normal_range"],
+            clinical_status=item["clinical_status"],
             group=item["group"],
             shap_value=item["shap_value"],
             importance_level=item["importance_level"],
@@ -343,3 +387,46 @@ def generate_arabic_medical_report(shap_dict, sample_dict, predicted_class, pati
     
     return "\n\n".join(sections)
 
+
+def analyze_with_shap(model, X_train, sample):
+    if isinstance(sample, pd.Series):
+        sample = sample.to_frame().T
+    
+    predicted_class = int(model.predict(sample)[0])
+    model_type = str(type(model)).lower()
+    feature_names = list(X_train.columns)
+    
+    try:
+        if any(t in model_type for t in ["forest", "tree", "boost", "gbm", "catboost"]):
+            explainer = shap.TreeExplainer(model)
+            raw = explainer.shap_values(sample)
+        elif any(t in model_type for t in ["keras", "tensorflow", "torch"]):
+            background = shap.sample(X_train, min(100, len(X_train))).values
+            explainer = shap.DeepExplainer(model, background)
+            raw = explainer.shap_values(sample.values)
+        else:
+            explainer = shap.Explainer(model, X_train)
+            res = explainer(sample)
+            raw = res.values if hasattr(res, "values") else res
+    except Exception:
+        background = shap.sample(X_train, min(50, len(X_train)))
+        explainer = shap.KernelExplainer(model.predict_proba, background)
+        raw = explainer.shap_values(sample)
+
+    if isinstance(raw, list):
+        vals = np.array(raw[predicted_class])
+    else:
+        vals = np.array(raw)
+
+    if vals.ndim == 3:         
+        vals = vals[0, :, predicted_class]
+    elif vals.ndim == 2:
+        if vals.shape[0] == 1:
+            vals = vals[0]
+        else:
+            vals = vals[:, predicted_class]
+    
+    shap_dict = {name: float(val) for name, val in zip(feature_names, vals)}
+    sample_dict = {name: float(sample[name].iloc[0]) for name in feature_names}
+
+    return shap_dict, sample_dict, predicted_class
