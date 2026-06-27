@@ -14,7 +14,13 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Input
 
 from shap_analyzer import analyze_with_shap
-from expert_system import generate_arabic_medical_report
+
+from expert_system import (
+    generate_arabic_medical_report,
+    classify_features_clinical,
+    displaychart,
+    display_interactiveChart
+)
 
 def main():
     data = load_wine(as_frame=True)
@@ -51,6 +57,10 @@ def main():
         class_names=class_names
     )
     print(report_tree)
+    print("\n[Generating Charts for RandomForestClassifier...]")
+    classified_tree = classify_features_clinical(shap_dict, sample_dict, patient_context)
+    displaychart(classified_tree, "RandomForest Classifier")
+    display_interactiveChart(classified_tree, "RandomForest Classifier")
 
     print("\n" + "==================================================")
     print("2. Linear Model (Logistic Regression)")
@@ -67,6 +77,10 @@ def main():
         class_names=class_names
     )
     print(report_linear)
+    print("\n[Generating Charts for Logistic Regression...]")
+    classified_linear = classify_features_clinical(shap_dict, sample_dict, patient_context)
+    displaychart(classified_linear, "Logistic Regression")
+    display_interactiveChart(classified_linear, "Logistic Regression")
 
     print("\n" + "==================================================")
     print("3. Deep Learning Model (Keras)")
@@ -97,6 +111,11 @@ def main():
         class_names=class_names
     )
     print(report_dl)
+    
+    print("\n[Generating Charts for Keras Deep Learning Model...]")
+    classified_dl = classify_features_clinical(shap_dict, sample_dict, patient_context)
+    displaychart(classified_dl, "Keras Model")
+    display_interactiveChart(classified_dl, "Keras Model")
     print("==================================================")
 
 if __name__ == "__main__":

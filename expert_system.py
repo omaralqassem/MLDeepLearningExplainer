@@ -9,6 +9,10 @@ import shap
 import numpy as np
 import pandas as pd
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+import plotly.graph_objects as go
+
 MEDICAL_METADATA = {
     "systolic_bp": {
         "unit": "mmHg",
@@ -361,72 +365,108 @@ def generate_arabic_medical_report(shap_dict, sample_dict, predicted_class, pati
         synergy_section.append("\n تنبيهات سريرية ناتجة عن سياق المريض وتفاعل المؤشرات:")
         synergy_section.extend(engine.clinical_insights)
 
-    if len(risk_high) > len(prot_high):
-        conclusion_section = (
-            f"\n التقييم النهائي والتوصية:\n"
-            f"القرار التشخيصي الحالي يستند إلى عوامل خطورة متعددة وواضحة الأثر. "
-            f"يُرجى مطابقة هذه الدلائل مخبرياً وسريرياً مع الحالة السريرية العامة للمريض."
-        )
-    elif len(prot_high) > len(risk_high):
-        conclusion_section = (
-            f"\n التقييم النهائي والتوصية:\n"
-            f"على الرغم من تشخيص النموذج المقترح، تتوفر مؤشرات مطمئنة قوية الأثر "
-            f"قد تسهم في استقرار الحالة. يوصى بالمتابعة ومراعاة التباينات الفردية للمريض."
-        )
-    else:
-        conclusion_section = (
-            f"\n التقييم النهائي والتوصية:\n"
-            f"تبين وجود توازن متقارب وتداخل مستمر بين عوامل الخطورة والمؤشرات المطمئنة المكتشفة. "
-            f"الحالة تستوجب فحصاً وتدقيقاً طبياً مباشراً لتقييم المخاطر بشكل أدق."
-        )
-
     sections = [summary_section, "\n".join(analysis_section)]
     if synergy_section:
         sections.append("\n".join(synergy_section))
-    sections.append(conclusion_section)
     
     return "\n\n".join(sections)
 
 
-def analyze_with_shap(model, X_train, sample):
-    if isinstance(sample, pd.Series):
-        sample = sample.to_frame().T
+def displaychart(classified_data, model_title):
+    features = sorted(classified_data, key=lambda x: abs(x["ratio"]), reverse=True)[:8]
     
-    predicted_class = int(model.predict(sample)[0])
-    model_type = str(type(model)).lower()
-    feature_names = list(X_train.columns)
-    
-    try:
-        if any(t in model_type for t in ["forest", "tree", "boost", "gbm", "catboost"]):
-            explainer = shap.TreeExplainer(model)
-            raw = explainer.shap_values(sample)
-        elif any(t in model_type for t in ["keras", "tensorflow", "torch"]):
-            background = shap.sample(X_train, min(100, len(X_train))).values
-            explainer = shap.DeepExplainer(model, background)
-            raw = explainer.shap_values(sample.values)
+    feature_names = []
+    shap_values = []
+    bar_colors = []
+    annotations = []
+
+    for item in features:
+        display_label = f"{item['raw_name'].upper()}\n({item['value']:.2f} {item['unit']})"
+        feature_names.append(display_label)
+        shap_values.append(item["shap_value"])
+        
+        if item["direction"] == "Positive":
+            if item["clinical_status"] == "High":
+                bar_colors.append("#d9534f") 
+            else:
+                bar_colors.append("#f0ad4e") 
         else:
-            explainer = shap.Explainer(model, X_train)
-            res = explainer(sample)
-            raw = res.values if hasattr(res, "values") else res
-    except Exception:
-        background = shap.sample(X_train, min(50, len(X_train)))
-        explainer = shap.KernelExplainer(model.predict_proba, background)
-        raw = explainer.shap_values(sample)
+            bar_colors.append("#5cb85c")      
 
-    if isinstance(raw, list):
-        vals = np.array(raw[predicted_class])
-    else:
-        vals = np.array(raw)
-
-    if vals.ndim == 3:         
-        vals = vals[0, :, predicted_class]
-    elif vals.ndim == 2:
-        if vals.shape[0] == 1:
-            vals = vals[0]
+        ref_range = f"[{item['normal_range']}]" if item['normal_range'] else ""
+        annotations.append(f" {item['clinical_status']} {ref_range}")
+    sns.set_theme(style="whitegrid")
+    fig, ax = plt.subplots(figsize=(10, len(features) * 0.75))
+    bars = ax.barh(feature_names, shap_values, color=bar_colors, edgecolor="#444444", height=0.55)
+    ax.axvline(x=0, color="#333333", linestyle="--", linewidth=1.2)
+    max_val = max(np.abs(shap_values)) if shap_values else 1.0
+    for bar, ann, val in zip(bars, annotations, shap_values):
+        width = bar.get_width()
+        offset = max_val * 0.02
+        if val >= 0:
+            ax.text(width + offset, bar.get_y() + bar.get_height()/2, 
+                    ann, ha='left', va='center', fontsize=9, fontweight='bold', color='#333333')
         else:
-            vals = vals[:, predicted_class]
-    
-    shap_dict = {name: float(val) for name, val in zip(feature_names, vals)}
-    sample_dict = {name: float(sample[name].iloc[0]) for name in feature_names}
+            ax.text(width - offset, bar.get_y() + bar.get_height()/2, 
+                    ann, ha='right', va='center', fontsize=9, fontweight='bold', color='#333333')
 
-    return shap_dict, sample_dict, predicted_class
+    ax.set_title(f"Diagnostic Value Contributions - {model_title}", fontsize=13, pad=15, fontweight="bold")
+    ax.set_xlabel("← Reduces Target Class Probability  |  Increases Target Class Probability →", fontsize=9, labelpad=8)
+    ax.set_xlim(-max_val * 1.5, max_val * 1.5)
+    sns.despine(left=True, bottom=True)
+    plt.tight_layout()
+    plt.show()
+
+
+def display_interactiveChart(classified_data, model_title):
+    features = sorted(classified_data, key=lambda x: abs(x["ratio"]), reverse=True)[:8]
+    features.reverse()  
+    y_labels = [f"{item['raw_name'].upper()} ({item['value']:.2f} {item['unit']})" for item in features]
+    shap_values = [item["shap_value"] for item in features]
+    colors = []
+    hover_texts = []
+    for item in features:
+        if item["direction"] == "Positive":
+            color = "#d9534f" if item["clinical_status"] == "High" else "#f0ad4e"
+        else:
+            color = "#5cb85c"
+        colors.append(color)
+        hover_info = (
+            f"<b>Parameter:</b> {item['raw_name'].upper()}<br>"
+            f"<b>Value:</b> {item['value']:.2f} {item['unit']}<br>"
+            f"<b>Clinical Status:</b> {item['clinical_status']}<br>"
+            f"<b>Reference Bound:</b> {item['normal_range'] if item['normal_range'] else 'N/A'}<br>"
+            f"<b>Impact Value:</b> {item['shap_value']:.4f}"
+        )
+        hover_texts.append(hover_info)
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        y=y_labels,
+        x=shap_values,
+        orientation='h',
+        marker=dict(color=colors, line=dict(color='#444444', width=1)),
+        hovertext=hover_texts,
+        hoverinfo="text"
+    ))
+    fig.update_layout(
+        title=dict(
+            text=f"Model Feature Explanations - {model_title}",
+            x=0.05,
+            y=0.95,
+            font=dict(size=15, color="#2c3e50")
+        ),
+        xaxis=dict(
+            title="← Reduces Predicted Target Class Value  |  Increases Target Value →",
+            zeroline=True,
+            zerolinecolor="#2c3e50",
+            zerolinewidth=1.2,
+            gridcolor="#f0f2f5"
+        ),
+        yaxis=dict(gridcolor="#f0f2f5"),
+        plot_bgcolor="#ffffff",
+        paper_bgcolor="#ffffff",
+        margin=dict(l=150, r=50, t=80, b=50),
+        height=380,
+        showlegend=False
+    )
+    fig.show()
