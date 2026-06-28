@@ -24,6 +24,16 @@ MEDICAL_METADATA = {
             "diabetic": "90-130"  
         }
     },
+    "bloodpressure": {
+        "unit": "mmHg",
+        "group": "Vitals",
+        "arabic_name": "ضغط الدم الانبساطي",
+        "ranges": {
+            "default": "<85",
+            "elderly": "<90",
+            "diabetic": "90-130"  
+        }
+    },
     "ldl_cholesterol": {
         "unit": "mg/dL",
         "group": "Labs",
@@ -43,6 +53,16 @@ MEDICAL_METADATA = {
             "default": "0.6-1.2"
         }
     },
+    "skinthickness": {
+        "unit": "mm",
+        "group": "Labs",
+        "arabic_name": "سماكة الجلد",
+        "ranges": {
+            "male": "10-15",
+            "female": "15-25",
+            "default": "12-23"
+        }
+    },
     "urea": {
         "unit": "mg/dL",
         "group": "Labs",
@@ -51,13 +71,23 @@ MEDICAL_METADATA = {
             "default": "7-20"
         }
     },
+    # "glucose": {
+    #     "unit": "mg/dL",
+    #     "group": "Labs",
+    #     "arabic_name": "جلوكوز الدم الصائم",
+    #     "ranges": {
+    #         "default": "70-100",
+    #         "diabetic": "80-130" 
+    #         }
+    # },
     "glucose": {
         "unit": "mg/dL",
         "group": "Labs",
-        "arabic_name": "جلوكوز الدم الصائم",
+        "arabic_name": "جلوكوز الدم بعد التحليل",
         "ranges": {
-            "default": "70-100",
-            "diabetic": "80-130" 
+            "default": "<140",
+            "prediabetes": "140-199",
+            "diabetic": ">200" 
             }
     },
     "heart_rate": {
@@ -66,6 +96,25 @@ MEDICAL_METADATA = {
         "arabic_name": "معدل ضربات القلب",
         "ranges": {
             "default": "60-100"
+        }
+    },
+    "insulin": {
+        "unit": "μ U/ml",
+        "group": "Labs",
+        "arabic_name": "إنتاج الأنسولين",
+        "ranges": {
+            "default": "<50"
+        }
+    },
+    "bmi": {
+        "unit": "kg/m2",
+        "group": "Index",
+        "arabic_name": "مؤشر كتلة الجسم",
+        "ranges": {
+            "underweight": "<18.5",
+            "default": "18.5-24.9",
+            "overweight": "25-29.9",
+            "obese": ">30"
         }
     },
 }
